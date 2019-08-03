@@ -1,0 +1,12 @@
+cmake-build-debug/
+cmake_install.cmake
+CmakeFiles
+CMakeCache.txt
+lc3
+lc3.cbp
+Makefile
+.idea
+*/CMakeFiles
+*/cmake_install.cmake
+*/mian.cpp.o
+*/vm.cpp.o
