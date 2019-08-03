@@ -63,9 +63,9 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             break;
         }
         case OP_ADD: {
-            uint16_t DR = instruction & (0b111 << 9);
-            uint16_t SR1 = instruction & (0b111 << 6);
-            uint16_t immFlag = instruction & (0b1 << 5);
+            uint16_t DR = (instruction >> 9) & 0b111;
+            uint16_t SR1 = (instruction >> 6) & 0b111;
+            uint16_t immFlag = (instruction >> 5) & 0b1;
 
             if (immFlag) { /* immediate */
                 this->registers[DR] = this->registers[SR1] + this->signExtend(instruction & 0b11111, 5);
@@ -77,33 +77,33 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             break;
         }
         case OP_LD: {
-            uint16_t DR = instruction & (0b111 << 9);
+            uint16_t DR = (instruction >> 9) & 0b111;
             uint16_t pcOffset = this->signExtend(instruction & 0b111111111, 9);
             this->registers[DR] = this->readMemory(this->registers[PC] + pcOffset);
             this->updateFlag(DR);
             break;
         }
         case OP_ST: {
-            uint16_t DR = instruction & (0b111 << 9);
+            uint16_t DR = (instruction >> 9) & 0b111;
             uint16_t pcOffset = this->signExtend(instruction & 0b111111111, 9);
             this->writeMemory(this->registers[PC] + pcOffset, this->registers[DR]);
             break;
         }
         case OP_JSR: {
-            uint16_t flag = instruction & (0b1 << 11);
+            uint16_t flag = (instruction>>11) & 0b1;
             this->registers[R7] = this->registers[PC];
             if (flag) {  /* JSR */
                 this->registers[PC] += this->signExtend(instruction & (0b11111111111), 11);
             } else { /* JSRR */
-                uint16_t BaseR = instruction & (0b111 << 6);
+                uint16_t BaseR = (instruction>>6) & 0b111;
                 this->registers[PC] = this->registers[BaseR];
             }
             break;
         }
         case OP_AND: {
-            uint16_t DR = instruction & (0b111 << 9);
-            uint16_t SR1 = instruction & (0b111 << 6);
-            uint16_t immFlag = instruction & (0b1 << 5);
+            uint16_t DR = (instruction >> 9) & 0b111;
+            uint16_t SR1 = (instruction >> 6) & 0b111;
+            uint16_t immFlag = (instruction >> 5) & 0b1;
             if (immFlag) {
                 this->registers[DR] = this->registers[SR1] & this->signExtend(instruction & (0b11111), 5);
             } else {
@@ -114,16 +114,16 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             break;
         }
         case OP_LDR: {
-            uint16_t DR = instruction & (0b111 << 9);
-            uint16_t BaseR = instruction & (0b111 << 6);
+            uint16_t DR = (instruction >> 9) & 0b111;
+            uint16_t BaseR = (instruction >> 6) & 0b111;
             uint16_t offset = this->signExtend(instruction & 0b111111, 6);
             this->registers[DR] = this->readMemory(this->registers[BaseR] + offset);
             this->updateFlag(DR);
             break;
         }
         case OP_STR: {
-            uint16_t DR = instruction & (0b111 << 9);
-            uint16_t BaseR = instruction & (0b111 << 6);
+            uint16_t DR = (instruction >> 9) & 0b111;
+            uint16_t BaseR = (instruction >> 6) & 0b111;
             uint16_t offset = this->signExtend(instruction & 0b111111, 6);
             this->writeMemory(this->registers[BaseR] + offset, this->registers[DR]);
             break;
@@ -133,27 +133,27 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             break;
         }
         case OP_NOT: {
-            uint16_t DR = instruction & (0b111 << 9);
-            uint16_t SR1 = instruction & (0b111 << 6);
+            uint16_t DR = (instruction >> 9) & 0b111;
+            uint16_t SR1 = (instruction >> 6) & 0b111;
             this->registers[DR] = ~this->registers[SR1];
             this->updateFlag(DR);
             break;
         }
         case OP_LDI: {
-            uint16_t DR = instruction & (0b111 << 9);
+            uint16_t DR = (instruction >> 9) & 0b111;
             uint16_t offset = this->signExtend(instruction & 0b111111111, 9);
             this->registers[DR] = this->readMemory(this->readMemory(this->registers[PC] + offset));
             this->updateFlag(DR);
             break;
         }
         case OP_STI: {
-            uint16_t DR = instruction & (0b111 << 9);
+            uint16_t DR = (instruction >> 9) & 0b111;
             uint16_t offset = this->signExtend(instruction & 0b111111111, 9);
             this->writeMemory(this->readMemory(this->registers[PC] + offset), this->registers[DR]);
             break;
         }
         case OP_JMP: {
-            uint16_t BaseR = instruction & (0b111 << 6);
+            uint16_t BaseR = (instruction >> 6) & 0b111;
             this->registers[PC] = this->registers[BaseR];
             break;
         }
@@ -162,7 +162,7 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             break;
         }
         case OP_LEA: {
-            uint16_t DR = instruction & (0b111 << 9);
+            uint16_t DR = (instruction >> 9) & 0b111;
             uint16_t offset = this->signExtend(instruction & 0b111111111, 9);
             this->registers[DR] = this->registers[PC] + offset;
             this->updateFlag(DR);
@@ -177,6 +177,19 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
     if (this->registers[PC] >= UINT16_MAX) {
         this->running = false;
     }
+}
+
+void VM::printRegister() {
+    std::cout << "REGISTERS: " << "R0:" << this->registers[R0] << " "
+              << "R1:" << this->registers[R1] << " "
+              << "R2:" << this->registers[R2] << " "
+              << "R3:" << this->registers[R3] << " "
+              << "R4:" << this->registers[R4] << " "
+              << "R5:" << this->registers[R5] << " "
+              << "R6:" << this->registers[R6] << " "
+              << "R7:" << this->registers[R7] << " "
+              << "PC:" << this->registers[PC] << " "
+              << "COND:" << this->registers[COND] << std::endl;
 }
 
 void VM::executeTrap(uint16_t trapCode) {
@@ -221,7 +234,8 @@ void VM::executeTrap(uint16_t trapCode) {
             break;
         }
         case TRAP_HALT: {
-            std::puts("HALT");
+            std::cout<<std::endl;
+            std::puts("=========HALT=========");
             std::fflush(stdout);
             this->running = false;
             break;
@@ -254,6 +268,7 @@ void VM::run() {
         uint16_t instruction = this->fetch();
         uint16_t opcode = this->decode(instruction);
         this->execute(opcode, instruction);
+//        this->printRegister();
     }
 }
 
