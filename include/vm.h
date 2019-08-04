@@ -49,7 +49,7 @@ namespace lc3 {
         FL_NEG = 1 << 2,  /* negative */
     };
 
-    enum Trap{
+    enum Trap {
         TRAP_GETC = 0x20, /* get char from keyboard but not echo onto terminal  */
         TRAP_OUT = 0x21, /* echo a char onto terminal */
         TRAP_PUTS = 0x22, /* echo a word string onto terminal */
@@ -60,6 +60,7 @@ namespace lc3 {
 
     class VM {
     private:
+
         bool running = false;
 
         uint16_t *memory; /* memory */
@@ -72,7 +73,7 @@ namespace lc3 {
         uint16_t fetch();
 
         /* signed extend */
-        uint16_t signExtend(uint16_t source,uint16_t numberOfDigits);
+        uint16_t signExtend(uint16_t source, uint16_t numberOfDigits);
 
         void updateFlag(uint16_t reg);
 
@@ -90,15 +91,18 @@ namespace lc3 {
         /* write into memory */
         uint16_t writeMemory(uint16_t address, uint16_t value);
 
+        void printRegister();
+
     public:
-        VM();
 
         void loadProgram(std::vector<uint16_t> prog);
 
         void run();
 
-        ~VM();
+    public:
+        VM();
 
+        ~VM();
     };
 
 };

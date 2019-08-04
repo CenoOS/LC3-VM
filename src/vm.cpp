@@ -32,8 +32,7 @@ uint16_t VM::decode(uint16_t instruction) {
 
 
 uint16_t VM::signExtend(uint16_t source, uint16_t numberOfDigits) {
-    if ((source >> (numberOfDigits - 1)) & 0b1) { /* negative */
-        /* just set highest bit of source(CLZ(source)) to zero*/
+    if ((source >> (numberOfDigits - 1)) & 1) {
         source |= (0xFFFF << numberOfDigits);
     }
     return source;
@@ -66,14 +65,15 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             uint16_t DR = (instruction >> 9) & 0b111;
             uint16_t SR1 = (instruction >> 6) & 0b111;
             uint16_t immFlag = (instruction >> 5) & 0b1;
-
             if (immFlag) { /* immediate */
-                this->registers[DR] = this->registers[SR1] + this->signExtend(instruction & 0b11111, 5);
+                uint16_t imm5 = this->signExtend(instruction & 0b11111, 5);
+                this->registers[DR] = this->registers[SR1] + imm5;
             } else {
                 uint16_t SR2 = instruction & (0b111);
                 this->registers[DR] = this->registers[SR1] + this->registers[SR2];
             }
             this->updateFlag(DR); /* update cpu flag */
+
             break;
         }
         case OP_LD: {
@@ -90,12 +90,12 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
             break;
         }
         case OP_JSR: {
-            uint16_t flag = (instruction>>11) & 0b1;
+            uint16_t flag = (instruction >> 11) & 0b1;
             this->registers[R7] = this->registers[PC];
             if (flag) {  /* JSR */
                 this->registers[PC] += this->signExtend(instruction & (0b11111111111), 11);
             } else { /* JSRR */
-                uint16_t BaseR = (instruction>>6) & 0b111;
+                uint16_t BaseR = (instruction >> 6) & 0b111;
                 this->registers[PC] = this->registers[BaseR];
             }
             break;
@@ -159,6 +159,8 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
         }
         case OP_RES: {
             /* not used now */
+            /* initiate an illegal opcode exception */
+
             break;
         }
         case OP_LEA: {
@@ -180,6 +182,7 @@ void VM::execute(uint16_t opcode, uint16_t instruction) {
 }
 
 void VM::printRegister() {
+    std::cout << std::endl;
     std::cout << "REGISTERS: " << "R0:" << this->registers[R0] << " "
               << "R1:" << this->registers[R1] << " "
               << "R2:" << this->registers[R2] << " "
@@ -204,16 +207,17 @@ void VM::executeTrap(uint16_t trapCode) {
             break;
         }
         case TRAP_PUTS: {
-            uint16_t *c = this->memory + this->registers[R0];
-            while (*c) {
-                std::putc((char) *c, stdout);
-                ++c;
+            uint16_t offset = this->registers[R0];
+            uint16_t c = this->readMemory(offset);
+            while (c) {
+                std::putc((char) c, stdout);
+                ++offset;
+                c = this->readMemory(offset);
             }
             std::fflush(stdout);
             break;
         }
         case TRAP_IN: {
-            std::cout << "Enter a character :" << std::endl;
             char c = getchar();
             std::putc(c, stdout);
             this->registers[R0] = (uint16_t) c;
@@ -234,8 +238,7 @@ void VM::executeTrap(uint16_t trapCode) {
             break;
         }
         case TRAP_HALT: {
-            std::cout<<std::endl;
-            std::puts("=========HALT=========");
+            std::cout << std::endl;
             std::fflush(stdout);
             this->running = false;
             break;
