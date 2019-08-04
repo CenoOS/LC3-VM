@@ -252,7 +252,6 @@ void VM::loadProgram(std::vector<uint16_t> prog) {
     }
 }
 
-
 uint16_t VM::readMemory(uint16_t address) {
     return this->memory[address];
 }
