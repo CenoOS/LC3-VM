@@ -10,8 +10,11 @@
 #include "../include/common.h"
 #include "../include/instruction.h"
 
-
 using namespace lc3;
+
+typedef void (VM::*opHandler)(uint16_t);
+
+typedef struct VM::OpINS OpINS;
 
 
 VM::VM() {
@@ -23,6 +26,169 @@ VM::VM() {
      *  0xFE00 -  0xFFFF : device register address
      */
     this->memory = (uint16_t *) malloc(UINT16_MAX * sizeof(uint16_t));
+    this->initHandlerTable();
+}
+
+void VM::Handle_BR(uint16_t instruction) {
+    uint16_t pcOffset = signExtend(instruction & 0b111111111, 9);
+    uint16_t condFlag = instruction & (0b111 << 9);
+    if (this->registers[COND] & condFlag) {
+        this->registers[PC] += pcOffset;
+    }
+} /* branch */
+
+void VM::Handle_ADD(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t SR1 = (instruction >> 6) & 0b111;
+    uint16_t immFlag = (instruction >> 5) & 0b1;
+    if (immFlag) { /* immediate */
+        uint16_t imm5 = signExtend(instruction & 0b11111, 5);
+        this->registers[DR] = this->registers[SR1] + imm5;
+    } else {
+        uint16_t SR2 = instruction & (0b111);
+        this->registers[DR] = this->registers[SR1] + this->registers[SR2];
+    }
+    this->updateFlag(DR); /* update cpu flag */
+} /* add */
+
+void VM::Handle_LD(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t pcOffset = signExtend(instruction & 0b111111111, 9);
+    this->registers[DR] = this->readMemory(this->registers[PC] + pcOffset);
+    this->updateFlag(DR);
+} /* load */
+
+void VM::Handle_ST(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t pcOffset = signExtend(instruction & 0b111111111, 9);
+    this->writeMemory(this->registers[PC] + pcOffset, this->registers[DR]);
+}/* store */
+
+void VM::Handle_JSR(uint16_t instruction) {
+    uint16_t flag = (instruction >> 11) & 0b1;
+    this->registers[R7] = this->registers[PC];
+    if (flag) {  /* JSR */
+        this->registers[PC] += signExtend(instruction & (0b11111111111), 11);
+    } else { /* JSRR */
+        uint16_t BaseR = (instruction >> 6) & 0b111;
+        this->registers[PC] = this->registers[BaseR];
+    }
+} /* jump register */
+
+void VM::Handle_AND(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t SR1 = (instruction >> 6) & 0b111;
+    uint16_t immFlag = (instruction >> 5) & 0b1;
+    if (immFlag) {
+        this->registers[DR] = this->registers[SR1] & signExtend(instruction & (0b11111), 5);
+    } else {
+        uint16_t SR2 = instruction & 0b111;
+        this->registers[DR] = this->registers[SR1] & this->registers[SR2];
+    }
+    this->updateFlag(DR);
+} /* and */
+
+void VM::Handle_LDR(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t BaseR = (instruction >> 6) & 0b111;
+    uint16_t offset = signExtend(instruction & 0b111111, 6);
+    this->registers[DR] = this->readMemory(this->registers[BaseR] + offset);
+    this->updateFlag(DR);
+} /* load register */
+
+void VM::Handle_STR(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t BaseR = (instruction >> 6) & 0b111;
+    uint16_t offset = signExtend(instruction & 0b111111, 6);
+    this->writeMemory(this->registers[BaseR] + offset, this->registers[DR]);
+} /* store register */
+
+void VM::Handle_RTI(uint16_t instruction) {
+
+} /* not used */
+
+void VM::Handle_NOT(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t SR1 = (instruction >> 6) & 0b111;
+    this->registers[DR] = ~this->registers[SR1];
+    this->updateFlag(DR);
+} /* not */
+
+void VM::Handle_LDI(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t offset = signExtend(instruction & 0b111111111, 9);
+    this->registers[DR] = this->readMemory(this->readMemory(this->registers[PC] + offset));
+    this->updateFlag(DR);
+} /* load indirect */
+
+void VM::Handle_STI(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t offset = signExtend(instruction & 0b111111111, 9);
+    this->writeMemory(this->readMemory(this->registers[PC] + offset), this->registers[DR]);
+} /* store indirect */
+
+void VM::Handle_JMP(uint16_t instruction) {
+    uint16_t BaseR = (instruction >> 6) & 0b111;
+    this->registers[PC] = this->registers[BaseR];
+} /* jump */
+
+void VM::Handle_RES(uint16_t instruction) {
+} /* reserved (unused) */
+
+void VM::Handle_LEA(uint16_t instruction) {
+    uint16_t DR = (instruction >> 9) & 0b111;
+    uint16_t offset = signExtend(instruction & 0b111111111, 9);
+    this->registers[DR] = this->registers[PC] + offset;
+    this->updateFlag(DR);
+} /* load effective address */
+
+void VM::Handle_TRAP(uint16_t instruction) {
+    uint16_t trapCode = instruction & 0b11111111;
+    this->executeTrap(trapCode);
+} /* trap */
+
+void VM::Handle_TRAP_GETC(uint16_t op) {
+
+} /* get char from keyboard but not echo onto terminal  */
+
+void VM::Handle_TRAP_OUT(uint16_t op) {
+
+} /* echo a char onto terminal */
+
+void VM::Handle_TRAP_PUTS(uint16_t op) {
+
+} /* echo a word string onto terminal */
+
+void VM::Handle_TRAP_IN(uint16_t op) {
+
+} /* get char from keyboard and echo onto terminal */
+
+void VM::Handle_TRAP_PUTSP(uint16_t op) {
+
+} /* output a byte string */
+
+void VM::Handle_TRAP_HALT(uint16_t op) {
+
+} /* halt program */
+
+void VM::initHandlerTable() {
+    std::map<uint16_t, OpINS>::iterator it = this->opHandlerTable.begin();
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_BR, {OP_BR, 1, "BR", &VM::Handle_BR}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_ADD, {OP_ADD, 1, "ADD", &VM::Handle_ADD}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_LD, {OP_LD, 1, "LD", &VM::Handle_LD}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_ST, {OP_ST, 1, "ST", &VM::Handle_ST}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_JSR, {OP_JSR, 1, "JSR", &VM::Handle_JSR}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_AND, {OP_AND, 1, "AND", &VM::Handle_AND}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_LDR, {OP_LDR, 1, "LDR", &VM::Handle_LDR}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_STR, {OP_STR, 1, "STR", &VM::Handle_STR}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_RTI, {OP_RTI, 1, "RTI", &VM::Handle_RTI}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_NOT, {OP_NOT, 1, "NOT", &VM::Handle_NOT}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_LDI, {OP_LDI, 1, "LDI", &VM::Handle_LDI}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_STI, {OP_STI, 1, "STI", &VM::Handle_STI}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_JMP, {OP_JMP, 1, "JMP", &VM::Handle_JMP}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_RES, {OP_RES, 1, "RES", &VM::Handle_RES}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_LEA, {OP_LEA, 1, "LEA", &VM::Handle_LEA}));
+    this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_TRAP, {OP_TRAP, 1, "TRAP", &VM::Handle_TRAP}));
 }
 
 unsigned short VM::fetch() {
@@ -45,131 +211,9 @@ void VM::updateFlag(uint16_t reg) {
 }
 
 void VM::execute(uint16_t opcode, uint16_t instruction) {
-
-    // todo : refactor
-    switch (opcode) {
-        case OP_BR: {
-            uint16_t pcOffset = signExtend(instruction & 0b111111111, 9);
-            uint16_t condFlag = instruction & (0b111 << 9);
-            if (this->registers[COND] & condFlag) {
-                this->registers[PC] += pcOffset;
-            }
-            break;
-        }
-        case OP_ADD: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t SR1 = (instruction >> 6) & 0b111;
-            uint16_t immFlag = (instruction >> 5) & 0b1;
-            if (immFlag) { /* immediate */
-                uint16_t imm5 = signExtend(instruction & 0b11111, 5);
-                this->registers[DR] = this->registers[SR1] + imm5;
-            } else {
-                uint16_t SR2 = instruction & (0b111);
-                this->registers[DR] = this->registers[SR1] + this->registers[SR2];
-            }
-            this->updateFlag(DR); /* update cpu flag */
-
-            break;
-        }
-        case OP_LD: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t pcOffset = signExtend(instruction & 0b111111111, 9);
-            this->registers[DR] = this->readMemory(this->registers[PC] + pcOffset);
-            this->updateFlag(DR);
-            break;
-        }
-        case OP_ST: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t pcOffset = signExtend(instruction & 0b111111111, 9);
-            this->writeMemory(this->registers[PC] + pcOffset, this->registers[DR]);
-            break;
-        }
-        case OP_JSR: {
-            uint16_t flag = (instruction >> 11) & 0b1;
-            this->registers[R7] = this->registers[PC];
-            if (flag) {  /* JSR */
-                this->registers[PC] += signExtend(instruction & (0b11111111111), 11);
-            } else { /* JSRR */
-                uint16_t BaseR = (instruction >> 6) & 0b111;
-                this->registers[PC] = this->registers[BaseR];
-            }
-            break;
-        }
-        case OP_AND: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t SR1 = (instruction >> 6) & 0b111;
-            uint16_t immFlag = (instruction >> 5) & 0b1;
-            if (immFlag) {
-                this->registers[DR] = this->registers[SR1] & signExtend(instruction & (0b11111), 5);
-            } else {
-                uint16_t SR2 = instruction & 0b111;
-                this->registers[DR] = this->registers[SR1] & this->registers[SR2];
-            }
-            this->updateFlag(DR);
-            break;
-        }
-        case OP_LDR: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t BaseR = (instruction >> 6) & 0b111;
-            uint16_t offset = signExtend(instruction & 0b111111, 6);
-            this->registers[DR] = this->readMemory(this->registers[BaseR] + offset);
-            this->updateFlag(DR);
-            break;
-        }
-        case OP_STR: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t BaseR = (instruction >> 6) & 0b111;
-            uint16_t offset = signExtend(instruction & 0b111111, 6);
-            this->writeMemory(this->registers[BaseR] + offset, this->registers[DR]);
-            break;
-        }
-        case OP_RTI: {
-            /* not used now */
-            break;
-        }
-        case OP_NOT: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t SR1 = (instruction >> 6) & 0b111;
-            this->registers[DR] = ~this->registers[SR1];
-            this->updateFlag(DR);
-            break;
-        }
-        case OP_LDI: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t offset = signExtend(instruction & 0b111111111, 9);
-            this->registers[DR] = this->readMemory(this->readMemory(this->registers[PC] + offset));
-            this->updateFlag(DR);
-            break;
-        }
-        case OP_STI: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t offset = signExtend(instruction & 0b111111111, 9);
-            this->writeMemory(this->readMemory(this->registers[PC] + offset), this->registers[DR]);
-            break;
-        }
-        case OP_JMP: {
-            uint16_t BaseR = (instruction >> 6) & 0b111;
-            this->registers[PC] = this->registers[BaseR];
-            break;
-        }
-        case OP_RES: {
-            /* not used now */
-            /* initiate an illegal opcode exception */
-
-            break;
-        }
-        case OP_LEA: {
-            uint16_t DR = (instruction >> 9) & 0b111;
-            uint16_t offset = signExtend(instruction & 0b111111111, 9);
-            this->registers[DR] = this->registers[PC] + offset;
-            this->updateFlag(DR);
-            break;
-        }
-        case OP_TRAP: { /* some I/O */
-            uint16_t trapCode = instruction & 0b11111111;
-            this->executeTrap(trapCode);
-        }
-    }
+    OpINS opIns = this->opHandlerTable[opcode];
+    void (VM::*opHdr)(uint16_t) = opIns.opHandler;
+    (this->*opHdr)(instruction);
 
     if (this->registers[PC] >= UINT16_MAX) {
         this->running = false;
