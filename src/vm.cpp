@@ -16,6 +16,10 @@ typedef void (VM::*opHandler)(uint16_t);
 
 typedef struct VM::OpINS OpINS;
 
+typedef void (VM::*trapHandler)(uint16_t);
+
+typedef struct TrapINS TrapINS;
+
 
 VM::VM() {
     /** init memory,memory map
@@ -148,27 +152,49 @@ void VM::Handle_TRAP(uint16_t instruction) {
 } /* trap */
 
 void VM::Handle_TRAP_GETC(uint16_t op) {
-
+    this->registers[R0] = (uint16_t) getchar();
 } /* get char from keyboard but not echo onto terminal  */
 
 void VM::Handle_TRAP_OUT(uint16_t op) {
-
+    std::putc((char) this->registers[R0], stdout);
+    std::fflush(stdout);
 } /* echo a char onto terminal */
 
 void VM::Handle_TRAP_PUTS(uint16_t op) {
-
+    uint16_t offset = this->registers[R0];
+    uint16_t c = this->readMemory(offset);
+    while (c) {
+        std::putc((char) c, stdout);
+        ++offset;
+        c = this->readMemory(offset);
+    }
+    std::fflush(stdout);
 } /* echo a word string onto terminal */
 
 void VM::Handle_TRAP_IN(uint16_t op) {
-
+    char c = getchar();
+    std::putc(c, stdout);
+    this->registers[R0] = (uint16_t) c;
 } /* get char from keyboard and echo onto terminal */
 
 void VM::Handle_TRAP_PUTSP(uint16_t op) {
-
+    uint16_t *c = this->memory + this->registers[R0];
+    while (*c) {
+        char c1 = *c & 0xFF;
+        std::putc(c1, stdout);
+        char c2 = *c >> 8;
+        if (c2) {
+            std::putc(c2, stdout);
+        }
+        ++c;
+    }
+    std::fflush(stdout);
 } /* output a byte string */
 
 void VM::Handle_TRAP_HALT(uint16_t op) {
-
+    std::cout << std::endl;
+    std::fflush(stdout);
+    this->running = false;
 } /* halt program */
 
 void VM::initHandlerTable() {
@@ -189,6 +215,27 @@ void VM::initHandlerTable() {
     this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_RES, {OP_RES, 1, "RES", &VM::Handle_RES}));
     this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_LEA, {OP_LEA, 1, "LEA", &VM::Handle_LEA}));
     this->opHandlerTable.insert(it, std::pair<uint16_t, OpINS>(OP_TRAP, {OP_TRAP, 1, "TRAP", &VM::Handle_TRAP}));
+
+    std::map<uint16_t, TrapINS>::iterator trapIt = this->trapHandlerTable.begin();
+
+    this->trapHandlerTable.insert(trapIt, std::pair<uint16_t, TrapINS>(TRAP_GETC,
+                                                                       {TRAP_GETC, "TRAP_GETC",
+                                                                        &VM::Handle_TRAP_GETC}));
+    this->trapHandlerTable.insert(trapIt, std::pair<uint16_t, TrapINS>(TRAP_OUT,
+                                                                       {TRAP_OUT, "TRAP_OUT",
+                                                                        &VM::Handle_TRAP_OUT}));
+    this->trapHandlerTable.insert(trapIt, std::pair<uint16_t, TrapINS>(TRAP_PUTS,
+                                                                       {TRAP_PUTS, "TRAP_PUTS",
+                                                                        &VM::Handle_TRAP_PUTS}));
+    this->trapHandlerTable.insert(trapIt, std::pair<uint16_t, TrapINS>(TRAP_IN,
+                                                                       {TRAP_IN, "TRAP_IN",
+                                                                        &VM::Handle_TRAP_IN}));
+    this->trapHandlerTable.insert(trapIt, std::pair<uint16_t, TrapINS>(TRAP_PUTSP,
+                                                                       {TRAP_PUTSP, "TRAP_PUTSP",
+                                                                        &VM::Handle_TRAP_PUTSP}));
+    this->trapHandlerTable.insert(trapIt, std::pair<uint16_t, TrapINS>(TRAP_HALT,
+                                                                       {TRAP_HALT, "TRAP_HALT",
+                                                                        &VM::Handle_TRAP_HALT}));
 }
 
 unsigned short VM::fetch() {
@@ -235,54 +282,9 @@ void VM::printRegister() {
 }
 
 void VM::executeTrap(uint16_t trapCode) {
-    switch (trapCode) {
-        case TRAP_GETC: {
-            this->registers[R0] = (uint16_t) getchar();
-            break;
-        }
-        case TRAP_OUT: {
-            std::putc((char) this->registers[R0], stdout);
-            std::fflush(stdout);
-            break;
-        }
-        case TRAP_PUTS: {
-            uint16_t offset = this->registers[R0];
-            uint16_t c = this->readMemory(offset);
-            while (c) {
-                std::putc((char) c, stdout);
-                ++offset;
-                c = this->readMemory(offset);
-            }
-            std::fflush(stdout);
-            break;
-        }
-        case TRAP_IN: {
-            char c = getchar();
-            std::putc(c, stdout);
-            this->registers[R0] = (uint16_t) c;
-            break;
-        }
-        case TRAP_PUTSP: {
-            uint16_t *c = this->memory + this->registers[R0];
-            while (*c) {
-                char c1 = *c & 0xFF;
-                std::putc(c1, stdout);
-                char c2 = *c >> 8;
-                if (c2) {
-                    std::putc(c2, stdout);
-                }
-                ++c;
-            }
-            std::fflush(stdout);
-            break;
-        }
-        case TRAP_HALT: {
-            std::cout << std::endl;
-            std::fflush(stdout);
-            this->running = false;
-            break;
-        }
-    }
+    TrapINS trapIns = this->trapHandlerTable[trapCode];
+    void (VM::*trapHandler)(uint16_t) = trapIns.trapHandler;
+    (this->*trapHandler)(trapCode);
 }
 
 void VM::loadProgram(std::vector<uint16_t> prog) {
